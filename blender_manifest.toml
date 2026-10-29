@@ -1,0 +1,15 @@
+schema_version = "1.0.0"
+
+id = "vlg_to_pbr_baker"
+version = "2.0.0"
+name = "VLG → PBR Baker"
+tagline = "One-click Source VertexLitGeneric to PBR materials"
+maintainer = "VLG PBR Baker contributors"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+tags = ["Material", "Bake"]
+
+[permissions]
+files = "Reads TF2 VPK/VTF/VMT files for textures; optionally saves baked textures"
