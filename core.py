@@ -524,6 +524,10 @@ def convert(tex: Textures, p: VLGParams, s: ConvertSettings, size=None, log=prin
         "opacity": alpha.astype(np.float32),
         # linear helpers (not written unless requested)
         "_albedo_linear": albedo, "_f0_linear": f0_rgb,
+        "_rimmask": (expo[..., 3] if (p.rimmask and expo is not None) else np.ones((h, w))).astype(np.float32),
+        "_phong_mask": (mask if p.phong else np.zeros((h, w))).astype(np.float32),
+        "_phong_exp": n_exp.astype(np.float32),
+        "_spec_tint_lum": luminance(spec_tint).astype(np.float32),
     }
     return maps, info
 

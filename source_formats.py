@@ -531,3 +531,97 @@ class SourceFS:
         if b is None:
             return None, None
         return read_vtf(b)
+
+
+# =============================================================================
+# .vmt files on disk
+# =============================================================================
+
+
+def materials_root(path: str) -> Optional[str]:
+    """For a file inside a materials/ tree, the folder that contains 'materials' (the game/addon root)."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        if os.path.basename(d).lower() == "materials":
+            return os.path.dirname(d)
+        nd = os.path.dirname(d)
+        if nd == d:
+            return None
+        d = nd
+
+
+def find_file_ci(root: str, rel: str) -> Optional[str]:
+    """root/rel, matching each path part case-insensitively (Source paths are case-insensitive)."""
+    if not root:
+        return None
+    rel = re.sub(r"/+", "/", rel.replace("\\", "/")).strip("/")
+    p = os.path.join(root, *rel.split("/"))
+    if os.path.isfile(p):
+        return p
+    d = root
+    parts = rel.split("/")
+    for i, part in enumerate(parts):
+        try:
+            match = next((x for x in os.listdir(d) if x.lower() == part.lower()), None)
+        except OSError:
+            return None
+        if match is None:
+            return None
+        d = os.path.join(d, match)
+    return d if os.path.isfile(d) else None
+
+
+def game_rel(path: str, ext: str) -> str:
+    """'models\\x\\y.vtf' / 'materials/models/x/y' → 'materials/models/x/y<ext>'."""
+    rel = re.sub(r"/+", "/", str(path).replace("\\", "/")).strip().lstrip("/")
+    low = rel.lower()
+    for e in (".vtf", ".vmt"):
+        if low.endswith(e):
+            rel, low = rel[:-4], low[:-4]
+    if not low.startswith("materials/"):
+        rel = "materials/" + rel
+    return rel + ext
+
+
+def read_vmt_file(path: str, fs=None):
+    """Read a .vmt from disk, following 'patch' includes (looked up next to it, then in the game).
+    Returns (shader, flat params, materials root or None, notes)."""
+    root = materials_root(path)
+    notes = []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        kv = parse_keyvalues(f.read())
+    shader, params = kv["shader"], kv["params"]
+    depth = 0
+    while shader == "patch" and depth < 8:
+        depth += 1
+        inc = params.get("include")
+        if not inc:
+            notes.append("patch material without an 'include'")
+            break
+        rel = game_rel(inc, ".vmt")
+        text = None
+        local = find_file_ci(root, rel) if root else None
+        if local:
+            with open(local, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        elif fs is not None:
+            b = fs.read(rel)
+            if b is not None:
+                text = b.decode("utf-8", errors="replace")
+        if text is None:
+            notes.append(f"patch include '{inc}' not found – only the patched values are used")
+            merged = {}
+            for blk in ("insert", "replace"):
+                if isinstance(params.get(blk), dict):
+                    merged.update(params[blk])
+            params = merged
+            shader = "vertexlitgeneric"
+            break
+        base = parse_keyvalues(text)
+        merged = dict(base["params"])
+        for blk in ("insert", "replace"):
+            if isinstance(params.get(blk), dict):
+                merged.update(params[blk])
+        notes.append(f"patch: included {inc}")
+        shader, params = base["shader"], merged
+    return shader, flatten_vmt_params(params), root, notes
